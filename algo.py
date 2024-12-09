@@ -40,7 +40,7 @@ def __(fd, pl, sym):
     from pyecharts.charts import Bar, Candlestick, Kline
     from pyecharts import options as opts
     from pyecharts.globals import CurrentConfig, NotebookType
-    CurrentConfig.NOTEBOOK_TYPE = NotebookType.ZEPPELIN
+    CurrentConfig.NOTEBOOK_TYPE = NotebookType.JUPYTER_LAB
 
     df=fd.filter(pl.col('symbol')==sym).sort('epoch',descending=False)
     df=df.with_columns(gain=pl.when(pl.col('open')<pl.col('close')).then(1).otherwise(-1))
