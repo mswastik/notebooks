@@ -80,12 +80,9 @@ def __(
     pickle,
     pyperclip,
     time,
-    token_dict,
     urlparse,
     webbrowser,
 ):
-    global fyers, token_dict, name
-
     def generate_access_token():
         global user_id, pin, app_id, api_key, redirect_url, totp_key, url
         print("\nGenerating Access Token .....................")
@@ -138,6 +135,7 @@ def __(
 
 
     def fyers_login(e):
+        global fyers, token_dict, name
         while True:
             try:
                 with open("token_dict.pickle", "rb") as file:
@@ -168,6 +166,7 @@ def __(
         generate_access_token,
         pin,
         redirect_url,
+        token_dict,
         totp_key,
         url,
         user_id,
@@ -254,7 +253,14 @@ def __(a, dt, fd, pl, sym):
             if crossover(self.macd, self.sig):
                 self.buy()
             elif crossover(self.sig, self.macd):
-                self.sell()
+                try:
+                    #print(self.closed_trades[-1].entry_price)
+                    pinc=(self.data.Close[-1]-self.closed_trades[-1].entry_price)/self.closed_trades[-1].entry_price
+                    if pinc>.25:
+                        #self.sell()
+                        self.position.close()
+                except:
+                    pass
     df1=fd.filter(pl.col('symbol')==sym.value).filter(pl.col('epoch')>=dt.date(2021,9,9)).drop('symbol').sort('epoch',descending=False)
     df1=df1.rename({'open':"Open",'high':'High','low':'Low','close':"Close",'volume':'Volume'})
     df1=df1.to_pandas()
@@ -287,7 +293,7 @@ def __(pd, stats):
 @app.cell
 def __(a, opts):
     from pyecharts.charts import Line
-    Line(init_opts=opts.InitOpts(height="600px",width="1320px")).add_xaxis(a.dd.index.to_list()).add_yaxis(series_name="", y_axis=list(a.dd['sig'].to_numpy()),label_opts=opts.LabelOpts(is_show=False)).add_yaxis(series_name="", y_axis=list(a.dd['macd'].to_numpy()),label_opts=opts.LabelOpts(is_show=False)).add_yaxis(series_name="", y_axis=list(a.dd['hist'].to_numpy()),label_opts=opts.LabelOpts(is_show=False))
+    Line(init_opts=opts.InitOpts(height="600px",width="1320px")).add_xaxis(a.dd.index.tolist()).add_yaxis(series_name="", y_axis=list(a.dd['sig'].to_numpy()),label_opts=opts.LabelOpts(is_show=False)).add_yaxis(series_name="", y_axis=list(a.dd['macd'].to_numpy()),label_opts=opts.LabelOpts(is_show=False)).add_yaxis(series_name="", y_axis=list(a.dd['hist'].to_numpy()),label_opts=opts.LabelOpts(is_show=False))
     return (Line,)
 
 
