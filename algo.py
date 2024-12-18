@@ -1,11 +1,11 @@
 import marimo
 
-__generated_with = "0.9.32"
+__generated_with = "0.10.5"
 app = marimo.App(width="full")
 
 
 @app.cell(hide_code=True)
-def __():
+def _():
     import marimo as mo
     import polars as pl
     from fyers_apiv3 import fyersModel
@@ -63,14 +63,8 @@ def __():
     )
 
 
-@app.cell
-def __(fd, mo):
-    sym = mo.ui.dropdown(fd["symbol"].unique().to_list())
-    return (sym,)
-
-
 @app.cell(hide_code=True)
-def __(
+def _(
     a,
     f,
     fyers,
@@ -173,8 +167,47 @@ def __(
     )
 
 
-@app.cell(hide_code=True)
-def __(a, dt, fd, os, pl, relativedelta, sym):
+@app.cell
+def _(a, dt, fd, mo, os, pl, relativedelta):
+    sym = mo.ui.dropdown(fd["symbol"].unique().to_list())
+    PARQUET_FILE = f'C:\\Users\\{os.getlogin()}\\OneDrive\\Python\\stockdata1.parquet'
+    def fetch_data(ticker, sd, ed):
+        std=a.fyers.history(data={'symbol':f'NSE:{ticker}-EQ','resolution':'1D','date_format':1,'range_from':sd,'range_to':ed,'cont_flag':1})
+        df1=pl.DataFrame(std['candles'],schema={'epoch':pl.Int32,'open':pl.Float32,'high':pl.Float32,'low':pl.Float32,'close':pl.Float32,'volume':pl.Float32},orient="row")
+        df1=df1.with_columns(epoch=pl.from_epoch('epoch'))
+        df1=df1.with_columns(symbol=pl.lit(ticker))
+        return df1
+
+    def save_to_parquet(data, file_name):
+        if os.path.exists(file_name):
+            existing_data = pl.read_parquet(file_name)
+            data = pl.concat([existing_data, data]).unique(subset=["epoch", "Symbol"])
+            #data = data[~data.index.duplicated(keep='last')]  # Remove duplicates
+        data.write_parquet(file_name)
+        print(f"Data saved to {file_name}")
+
+    def update_parquet_data(ticker):
+        ticker=sym.value
+        if os.path.exists(PARQUET_FILE):
+            # Load existing data and find the last available date for the ticker
+            all_data = pl.read_parquet(PARQUET_FILE)
+            if ticker in all_data['Symbol'].values:
+                ticker_data = all_data.filter(pl.col('Symbol') == ticker)
+                last_date = ticker_data.select(pl.col('epoch').max()).to_numpy()[0,0]
+                start_date= (last_date+dt.timedelta(hours=24)).strftime('%Y-%m-%d')
+                #start_date = (last_date + pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+            else:
+                start_date = '2020-01-01'
+        else:
+            start_date = '2020-01-01'
+        end_date = (dt.datetime.now()).strftime('%Y-%m-%d')
+        new_data = fetch_data(ticker, start_date, end_date)
+
+        if not new_data.empty:
+            save_to_parquet(new_data, PARQUET_FILE)
+        else:
+            print(f"No new data available for {ticker}.")
+
     def getd(e):
         ny=5
         try:
@@ -200,17 +233,24 @@ def __(a, dt, fd, os, pl, relativedelta, sym):
                 fd1=pl.concat([fd,df1])
             fd1.write_parquet(f'C:\\Users\\{os.getlogin()}\\OneDrive\\Python\\stockdata.parquet')
     #mo.ui.button(on_click=getd, label='Update Data')
-    return (getd,)
+    return (
+        PARQUET_FILE,
+        fetch_data,
+        getd,
+        save_to_parquet,
+        sym,
+        update_parquet_data,
+    )
 
 
 @app.cell
-def __(fyers_login, getd, mo, sym):
-    mo.hstack([sym,mo.ui.button(on_click=fyers_login, label="Login"),mo.ui.button(on_click=getd, label='Update Data')], justify='start',gap=2)
+def _(fyers_login, mo, sym, update_parquet_data):
+    mo.hstack([sym,mo.ui.button(on_click=fyers_login, label="Login"),mo.ui.button(on_click=update_parquet_data, label='Update Data')], justify='start',gap=2)
     return
 
 
 @app.cell(hide_code=True)
-def __(Candlestick, fd, opts, pl, sym):
+def _(Candlestick, fd, opts, pl, sym):
     df=fd.filter(pl.col('symbol')==sym.value).sort('epoch',descending=False)
     df=df.with_columns(gain=pl.when(pl.col('open')<pl.col('close')).then(1).otherwise(-1))
     bar = (
@@ -230,7 +270,7 @@ def __(Candlestick, fd, opts, pl, sym):
 
 
 @app.cell
-def __(a, dt, fd, pl, sym):
+def _(a, dt, fd, pl, sym):
     import talib as tl
     from backtesting import Backtest, Strategy
     from backtesting.lib import crossover
@@ -263,12 +303,14 @@ def __(a, dt, fd, pl, sym):
                     pass
     df1=fd.filter(pl.col('symbol')==sym.value).filter(pl.col('epoch')>=dt.date(2021,9,9)).drop('symbol').sort('epoch',descending=False)
     df1=df1.rename({'open':"Open",'high':'High','low':'Low','close':"Close",'volume':'Volume'})
+    #df1=df1.with_columns(pl.col('epoch').cast(pl.String))
     df1=df1.to_pandas()
-    df1['epoch']=pd.to_datetime(df1['epoch'])
-    #df=df.with_columns(pl.col('epoch').cast(pl.String))
-    bt = Backtest(df1.set_index('epoch'), MACD,cash= 100000,exclusive_orders=True)
+    #df1['epoch']=pd.to_datetime(df1['epoch'])
+    df1.set_index('epoch',inplace=True)
+    #df1.reset_index(inplace=True)
+    bt = Backtest(df1, MACD,cash= 100000,exclusive_orders=True)
     stats = bt.run()
-    bt.plot()
+    bt.plot(plot_return=False,)
     return (
         Backtest,
         MACD,
@@ -285,13 +327,13 @@ def __(a, dt, fd, pl, sym):
 
 
 @app.cell
-def __(pd, stats):
+def _(pd, stats):
     pd.DataFrame(stats,columns=['stat'])
     return
 
 
 @app.cell
-def __(a, opts):
+def _(a, opts):
     from pyecharts.charts import Line
     Line(init_opts=opts.InitOpts(height="600px",width="1320px")).add_xaxis(a.dd.index.tolist()).add_yaxis(series_name="", y_axis=list(a.dd['sig'].to_numpy()),label_opts=opts.LabelOpts(is_show=False)).add_yaxis(series_name="", y_axis=list(a.dd['macd'].to_numpy()),label_opts=opts.LabelOpts(is_show=False)).add_yaxis(series_name="", y_axis=list(a.dd['hist'].to_numpy()),label_opts=opts.LabelOpts(is_show=False))
     return (Line,)
